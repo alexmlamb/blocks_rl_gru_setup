@@ -11,12 +11,13 @@ from torch.optim import RMSprop
 
 def config() -> Config:
     c = Config()
-    c.set_env(lambda: Atari('Breakout', frame_stack=False))
+    env_use = "Pong"
+    c.set_env(lambda: Atari(env_use, frame_stack=False))
     c.set_optimizer(
         lambda params: RMSprop(params, lr=7e-4, alpha=0.99, eps=1e-5)
     )
-    #  c.set_net_fn('actor-critic', net.actor_critic.ac_conv(rnn=net.GruBlock))
-    c.set_net_fn('actor-critic', net.actor_critic.ac_conv())
+    c.set_net_fn('actor-critic', net.actor_critic.ac_conv(rnn=net.GruBlock))
+    #c.set_net_fn('actor-critic', net.actor_critic.ac_conv())
     c.nworkers = 16
     c.nsteps = 5
     c.set_parallel_env(atari_parallel())
@@ -24,12 +25,13 @@ def config() -> Config:
     c.value_loss_weight = 0.5
     c.use_gae = False
     c.max_steps = int(2e7)
-    c.eval_env = Atari('Breakout')
+    c.eval_env = Atari(env_use)
     c.use_reward_monitor = True
     c.eval_deterministic = False
     c.episode_log_freq = 100
     c.eval_freq = None
     c.save_freq = None
+    print("GRU on Pong!")
     return c
 
 

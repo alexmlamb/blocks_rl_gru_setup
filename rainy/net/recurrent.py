@@ -6,6 +6,7 @@ from .init import lstm_bias, Initializer
 from ..prelude import Self
 from ..utils import Device
 
+from block_wrapper import BlockWrapper
 
 class RnnState(ABC):
     @abstractmethod
@@ -103,6 +104,7 @@ class LstmBlock(RnnBlock[LstmState]):
         super().__init__(input_dim, output_dim)
         self.lstm = nn.LSTM(input_dim, output_dim, **kwargs)
         initializer(self.lstm)
+        print('using lstm block!')
 
     def forward(
             self,
@@ -121,6 +123,7 @@ class LstmBlock(RnnBlock[LstmState]):
         for start, end in _haszero_iter(mask, nsteps):
             m = mask[start].view(1, -1, 1)
             processed, (h, c) = self.lstm(x[start:end], (h * m, c * m))
+            print('h c min max', h.min(), h.max(), c.min(), c.max())
             res.append(processed)
         return torch.cat(res).view(in_shape), LstmState(h, c)
 
@@ -155,8 +158,11 @@ class GruBlock(RnnBlock[GruState]):
             **kwargs
     ) -> None:
         super().__init__(input_dim, output_dim)
-        self.gru = nn.GRU(input_dim, output_dim, **kwargs)
-        initializer(self.gru)
+        #self.gru = nn.GRU(input_dim, output_dim, **kwargs)
+        #initializer(self.gru)
+
+        self.gru = BlockWrapper(input_dim, output_dim, output_dim, **kwargs)
+        initializer(self.gru.myrnn.block_lstm)
 
     def forward(
             self,
@@ -165,21 +171,26 @@ class GruBlock(RnnBlock[GruState]):
             mask: Optional[Tensor] = None
     ) -> Tuple[Tensor, GruState]:
         in_shape = x.shape
-        if in_shape == hidden.h.shape:
+        #print('compare in/h', in_shape, hidden.h.shape)
+        if in_shape[0] == hidden.h.shape[0]:
+            #print('inp shape', x.unsqueeze(0).shape, 'h shape', (_apply_mask(mask, hidden.h))[0].shape)
             out, h = self.gru(x.unsqueeze(0), *_apply_mask(mask, hidden.h))
+            #print('out shape', out.shape, 'h shape', h.shape)
             return out.squeeze(0), GruState(h.squeeze_(0))
         # forward Nsteps altogether
         nsteps = in_shape[0] // hidden.h.size(0)
         x, mask = _reshape_batch(x, mask, nsteps)
         res, h = [], hidden.h
         for start, end in _haszero_iter(mask, nsteps):
+            #print('inp shape', x[start:end].shape, 'h  loop shape', h.shape)
             processed, h = self.gru(x[start:end], h * mask[start].view(1, -1, 1))
+            #print('h min max', h.min(), h.max())
+            #print('process shape', processed.shape, 'h shape after', h.shape)
             res.append(processed)
         return torch.cat(res).view(in_shape), GruState(h.squeeze_(0))
 
     def initial_state(self, batch_size: int, device: Device) -> GruState:
         return GruState(device.zeros((batch_size, self.input_dim)))
-
 
 class DummyState(RnnState):
     def __getitem__(self, x: Union[Sequence[int], int]) -> Self:
